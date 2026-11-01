@@ -1,56 +1,613 @@
+
 /* PasswordGuard
-   Auth: configure Supabase URL + anon key below for real account authentication.
+   Auth: Supabase authentication.
    Passwords entered into Checker/Analyzer are processed locally and never saved.
 */
+
 const SUPABASE_URL = "https://dddbqzsluumrkqbpgozw.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_1bmCOQ8hBX3p9o8cDTnrbg_WFh5ygfA";
-const supabaseConfigured = SUPABASE_URL.startsWith("https://") && SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY";
-const supabaseClient = supabaseConfigured && window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const supabaseConfigured =
+  SUPABASE_URL.startsWith("https://") &&
+  SUPABASE_ANON_KEY !== "YOUR_SUPABASE_ANON_KEY" &&
+  SUPABASE_ANON_KEY !== "MASUKKAN_SUPABASE_PUBLISHABLE_KEY_KAMU";
+
+const supabaseClient =
+  supabaseConfigured && window.supabase
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
 
 const $ = id => document.getElementById(id);
-const authView = $("authView"), appView = $("appView");
-let currentUser = null, currentProfile = {name:"Pengguna",email:""}, currentResult = null;
-let historyItems = [];
-const storageKey = () => `pg_history_${(currentUser?.id || currentUser?.email || "guest").replace(/[^a-z0-9_-]/gi,"_")}`;
-function showToast(message){const t=$("toast");t.textContent=message;t.classList.add("show");clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>t.classList.remove("show"),2600)}
-function authMessage(message){$("authMessage").textContent=message;$("authMessage").classList.remove("hidden")}
-function setAuthTab(tab){document.querySelectorAll(".auth-tab").forEach(b=>b.classList.toggle("active",b.dataset.auth===tab));$("loginForm").classList.toggle("hidden",tab!=="login");$("registerForm").classList.toggle("hidden",tab!=="register");$("authMessage").classList.add("hidden")}
-document.querySelectorAll(".auth-tab").forEach(b=>b.addEventListener("click",()=>setAuthTab(b.dataset.auth)));
-document.querySelectorAll("[data-toggle]").forEach(b=>b.addEventListener("click",()=>{const el=$(b.dataset.toggle);el.type=el.type==="password"?"text":"password";b.textContent=el.type==="password"?"Lihat":"Sembunyikan"}));
-function showApp(user, profile={}){currentUser=user;currentProfile={name:profile.name||user.user_metadata?.full_name||user.email?.split("@")[0]||"Pengguna",email:user.email||""};authView.classList.add("hidden");appView.classList.remove("hidden");$("topUser").textContent=currentProfile.name;$("topAvatar").textContent=currentProfile.name.charAt(0).toUpperCase();$("welcomeName").textContent=currentProfile.name;$("profileName").value=currentProfile.name;$("profileEmail").value=currentProfile.email;$("profileAvatar").textContent=currentProfile.name.charAt(0).toUpperCase();historyItems=JSON.parse(localStorage.getItem(storageKey())||"[]");renderAll();navigate("dashboard")}
-function showAuth(){appView.classList.add("hidden");authView.classList.remove("hidden");currentUser=null}
-$("formRegister").addEventListener("submit",async e=>{e.preventDefault();const name=$("registerName").value.trim(),email=$("registerEmail").value.trim(),pass=$("registerPassword").value,confirm=$("confirmPassword").value;if(pass!==confirm)return authMessage("Konfirmasi password belum sama.");if(pass.length<8)return authMessage("Password akun minimal 8 karakter.");if(!supabaseClient)return authMessage("Autentikasi belum diaktifkan. Isi SUPABASE_URL dan SUPABASE_ANON_KEY di script.js terlebih dahulu, lalu coba lagi.");try{const {data,error}=await supabaseClient.auth.signUp({email,password:pass,options:{data:{full_name:name}}});if(error)throw error;authMessage(data.session?"Akun berhasil dibuat. Mengalihkan ke dashboard...":"Akun dibuat. Periksa email untuk verifikasi, lalu masuk.");if(data.session)showApp(data.user,{name})}catch(err){authMessage(err.message||"Pendaftaran gagal.")}});
-$("formLogin").addEventListener("submit",async e=>{e.preventDefault();if(!supabaseClient)return authMessage("Autentikasi belum diaktifkan. Isi SUPABASE_URL dan SUPABASE_ANON_KEY di script.js terlebih dahulu.");try{const {data,error}=await supabaseClient.auth.signInWithPassword({email:$("loginEmail").value.trim(),password:$("loginPassword").value});if(error)throw error;showApp(data.user)}catch(err){authMessage(err.message||"Login gagal.")}});
-$("forgotBtn").addEventListener("click",async()=>{const email=$("loginEmail").value.trim();if(!email)return authMessage("Masukkan email terlebih dahulu.");if(!supabaseClient)return authMessage("Aktifkan Supabase terlebih dahulu untuk menggunakan reset password.");try{const {error}=await supabaseClient.auth.resetPasswordForEmail(email);if(error)throw error;authMessage("Tautan reset password dikirim jika email terdaftar.")}catch(err){authMessage(err.message)}});
-$("logoutBtn").addEventListener("click",async()=>{if(supabaseClient)await supabaseClient.auth.signOut();showAuth();setAuthTab("login")});
-if(supabaseClient){supabaseClient.auth.getSession().then(({data})=>{if(data.session)showApp(data.session.user)});supabaseClient.auth.onAuthStateChange((_event,session)=>{if(session&&!currentUser)showApp(session.user)})}
-function navigate(page){document.querySelectorAll(".page").forEach(p=>p.classList.toggle("active",p.id===`page-${page}`));document.querySelectorAll(".nav-link[data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===page));const active=document.querySelector(`.nav-link[data-page="${page}"]`);$("crumb").textContent=active?active.textContent.trim():page;$("sidebar").classList.remove("open");if(page==="history")renderHistory()}
-document.querySelectorAll("[data-page]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.page)));
-document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.go)));
-$("mobileMenu").addEventListener("click",()=>$("sidebar").classList.toggle("open"));
 
-function analyzePassword(value){
- const checks={length:value.length>=12,upper:/[A-Z]/.test(value),lower:/[a-z]/.test(value),number:/[0-9]/.test(value),symbol:/[^A-Za-z0-9]/.test(value),pattern:!/(123456|12345|password|qwerty|abcdef|111111|000000)/i.test(value)&&!/(.)\1{3,}/.test(value)};
- const weights={length:25,upper:15,lower:15,number:15,symbol:15,pattern:15};let score=Object.keys(checks).reduce((sum,k)=>sum+(checks[k]?weights[k]:0),0);
- if(value.length===0)score=0;
- const level=score>=80?"Kuat":score>=50?"Sedang":"Lemah";
- const notes=[];if(!checks.length)notes.push("Gunakan minimal 12 karakter.");if(!checks.upper)notes.push("Tambahkan huruf kapital.");if(!checks.lower)notes.push("Tambahkan huruf kecil.");if(!checks.number)notes.push("Tambahkan angka.");if(!checks.symbol)notes.push("Tambahkan simbol.");if(!checks.pattern)notes.push("Hindari pola umum atau karakter berulang.");
- return {checks,score,level,notes};
+const authView = $("authView");
+const appView = $("appView");
+
+let currentUser = null;
+let currentProfile = { name: "Pengguna", email: "" };
+let currentResult = null;
+let historyItems = [];
+
+const storageKey = () =>
+  `pg_history_${(currentUser?.id || currentUser?.email || "guest").replace(/[^a-z0-9_-]/gi, "_")}`;
+
+function showToast(message) {
+  const t = $("toast");
+  t.textContent = message;
+  t.classList.add("show");
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => t.classList.remove("show"), 2600);
 }
-const checkKeys=["length","upper","lower","number","symbol","pattern"];
-$("checkInput").addEventListener("input",()=>{const v=$("checkInput").value;const r=analyzePassword(v);currentResult=v?{...r}:null;checkKeys.forEach(k=>{const el=$(`c-${k}`);el.classList.toggle("pass",!!r.checks[k]);el.querySelector("i").textContent=r.checks[k]?"✓":"○"});$("checkLevel").textContent=v?r.level:"Belum diperiksa";$("checkScore").textContent=`${r.score}/100`;$("checkMeter").style.width=r.score+"%";$("checkMeter").style.background=r.level==="Kuat"?"var(--green)":r.level==="Sedang"?"var(--yellow)":"var(--red)";$("checkAdvice").textContent=!v?"Masukkan password untuk melihat hasil pemeriksaan dan rekomendasi.":r.notes.length?r.notes.join(" "):"Semua kriteria dasar terpenuhi. Tetap gunakan password unik dan aktifkan 2FA."; $("saveCheck").disabled=!v});
-$("clearCheck").addEventListener("click",()=>{$("checkInput").value="";$("checkInput").dispatchEvent(new Event("input"))});
-$("saveCheck").addEventListener("click",()=>{if(!currentResult)return;const item={date:new Date().toISOString(),score:currentResult.score,level:currentResult.level};historyItems.unshift(item);historyItems=historyItems.slice(0,200);localStorage.setItem(storageKey(),JSON.stringify(historyItems));renderAll();showToast("Hasil pemeriksaan disimpan tanpa isi password.")});
-$("analyzeInput").addEventListener("input",()=>{const v=$("analyzeInput").value;const box=$("analysisResult");if(!v){box.className="analysis-placeholder";box.textContent="Hasil analisis akan tampil di sini.";return}const r=analyzePassword(v),counts={uppercase:(v.match(/[A-Z]/g)||[]).length,lowercase:(v.match(/[a-z]/g)||[]).length,numbers:(v.match(/[0-9]/g)||[]).length,symbols:(v.match(/[^A-Za-z0-9]/g)||[]).length};const patterns=/(123456|12345|password|qwerty|abcdef|111111|000000)/i.test(v)||/(.)\1{3,}/.test(v);box.className="";box.innerHTML=`<div class="analysis-grid"><div class="analysis-cell"><span>PANJANG</span><strong>${v.length}</strong><p>Jumlah karakter</p></div><div class="analysis-cell"><span>VARIASI</span><strong>${Object.values(counts).filter(x=>x>0).length}/4</strong><p>Jenis karakter</p></div><div class="analysis-cell"><span>SKOR</span><strong>${r.score}/100</strong><p>Kategori ${r.level}</p></div><div class="analysis-cell"><span>HURUF BESAR</span><strong>${counts.uppercase}</strong><p>Karakter kapital</p></div><div class="analysis-cell"><span>HURUF KECIL</span><strong>${counts.lowercase}</strong><p>Karakter kecil</p></div><div class="analysis-cell"><span>ANGKA & SIMBOL</span><strong>${counts.numbers+counts.symbols}</strong><p>${counts.numbers} angka • ${counts.symbols} simbol</p></div></div><div class="advice-box">${patterns?"Pola berulang atau pola umum terdeteksi. Hindari kombinasi yang mudah ditebak.":"Tidak ditemukan pola umum sederhana yang diperiksa oleh sistem."} Analisis ini bersifat edukatif dan bukan pengujian terhadap database kebocoran password.</div>`});
-$("genLength").addEventListener("input",()=>$("lengthValue").textContent=$("genLength").value+" karakter");
-function secureRandomInt(max){const arr=new Uint32Array(1);crypto.getRandomValues(arr);return arr[0]%max}
-function generatePassword(){let groups=[];if($("genUpper").checked)groups.push("ABCDEFGHJKLMNPQRSTUVWXYZ");if($("genLower").checked)groups.push("abcdefghijkmnopqrstuvwxyz");if($("genNumber").checked)groups.push("23456789");if($("genSymbol").checked)groups.push("!@#$%^&*()-_=+[]{}?");if(!groups.length)return showToast("Pilih minimal satu jenis karakter.");const all=groups.join("");const length=Number($("genLength").value);let chars=groups.map(g=>g[secureRandomInt(g.length)]);while(chars.length<length)chars.push(all[secureRandomInt(all.length)]);for(let i=chars.length-1;i>0;i--){const j=secureRandomInt(i+1);[chars[i],chars[j]]=[chars[j],chars[i]]}const result=chars.join("");$("generatedPassword").textContent=result;$("generatedLength").textContent=result.length+" karakter";$("generatedStrength").textContent="Hasil dibuat • periksa kembali"}
-$("generateBtn").addEventListener("click",generatePassword);$("regenerateBtn").addEventListener("click",generatePassword);$("copyGenerated").addEventListener("click",async()=>{const v=$("generatedPassword").textContent;if(!v||v.startsWith("Klik generate"))return;try{await navigator.clipboard.writeText(v);showToast("Password berhasil disalin.")}catch{showToast("Clipboard tidak tersedia di browser ini.")}});
-function saveHistory(){localStorage.setItem(storageKey(),JSON.stringify(historyItems))}
-function renderAll(){renderDashboard();renderHistory()}
-function counts(){return {total:historyItems.length,strong:historyItems.filter(x=>x.level==="Kuat").length,medium:historyItems.filter(x=>x.level==="Sedang").length,weak:historyItems.filter(x=>x.level==="Lemah").length}}
-function renderDashboard(){const c=counts();$("statTotal").textContent=c.total;$("statStrong").textContent=c.strong;$("statMedium").textContent=c.medium;$("statWeak").textContent=c.weak;$("donutTotal").textContent=c.total;$("legendStrong").textContent=c.strong;$("legendMedium").textContent=c.medium;$("legendWeak").textContent=c.weak;const deg=c.total?c.strong/c.total*360:0,deg2=c.total?(c.strong+c.medium)/c.total*360:0;$("donut").style.background=`conic-gradient(var(--green) 0deg ${deg}deg,var(--yellow) ${deg}deg ${deg2}deg,var(--red) ${deg2}deg 360deg)`;const recent=historyItems.slice(0,7);$("recentList").innerHTML=recent.length?recent.map(x=>`<div class="recent-item"><div><strong>Password check</strong><small>${new Date(x.date).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"})}</small></div><div><b style="font-size:11px;margin-right:9px">${x.score}/100</b><span class="badge ${x.level.toLowerCase()}">${x.level}</span></div></div>`).join(""):'<div class="empty-state">Belum ada aktivitas. Mulai periksa password contoh untuk melihat statistik.</div>'}
-function renderHistory(){const c=counts();$("histTotal").textContent=c.total;$("histAverage").textContent=c.total?Math.round(historyItems.reduce((a,b)=>a+b.score,0)/c.total):0;$("histBest").textContent=c.total?Math.max(...historyItems.map(x=>x.score)):0;const filter=$("historyFilter").value;const items=historyItems.filter(x=>filter==="all"||x.level===filter);$("historyBody").innerHTML=items.length?items.map(x=>`<tr><td>${new Date(x.date).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"})}</td><td><b>${x.score}/100</b></td><td>${x.level}</td><td><span class="badge ${x.level.toLowerCase()}">${x.level}</span></td></tr>`).join(""):'<tr><td colspan="4" class="empty-state">Belum ada riwayat untuk kategori ini.</td></tr>'}
-$("historyFilter").addEventListener("change",renderHistory);
-$("clearHistory").addEventListener("click",()=>{if(!confirm("Hapus semua riwayat pemeriksaan?"))return;historyItems=[];saveHistory();renderAll();showToast("Riwayat berhasil dihapus.")});
-$("profileForm").addEventListener("submit",async e=>{e.preventDefault();const name=$("profileName").value.trim();if(!name)return;if(supabaseClient&&currentUser?.id){const {error}=await supabaseClient.auth.updateUser({data:{full_name:name}});if(error)return showToast(error.message)}currentProfile.name=name;$("topUser").textContent=name;$("topAvatar").textContent=name.charAt(0).toUpperCase();$("welcomeName").textContent=name;$("profileAvatar").textContent=name.charAt(0).toUpperCase();showToast("Profil diperbarui.")});
+
+function authMessage(message) {
+  $("authMessage").textContent = message;
+  $("authMessage").classList.remove("hidden");
+}
+
+function setAuthTab(tab) {
+  document.querySelectorAll(".auth-tab").forEach(b =>
+    b.classList.toggle("active", b.dataset.auth === tab)
+  );
+
+  $("loginForm").classList.toggle("hidden", tab !== "login");
+  $("registerForm").classList.toggle("hidden", tab !== "register");
+  $("authMessage").classList.add("hidden");
+}
+
+document.querySelectorAll(".auth-tab").forEach(b =>
+  b.addEventListener("click", () => setAuthTab(b.dataset.auth))
+);
+
+document.querySelectorAll("[data-toggle]").forEach(b =>
+  b.addEventListener("click", () => {
+    const el = $(b.dataset.toggle);
+    el.type = el.type === "password" ? "text" : "password";
+    b.textContent = el.type === "password" ? "Lihat" : "Sembunyikan";
+  })
+);
+
+function showApp(user, profile = {}) {
+  currentUser = user;
+
+  currentProfile = {
+    name:
+      profile.name ||
+      user.user_metadata?.full_name ||
+      user.email?.split("@")[0] ||
+      "Pengguna",
+    email: user.email || ""
+  };
+
+  authView.classList.add("hidden");
+  appView.classList.remove("hidden");
+
+  $("topUser").textContent = currentProfile.name;
+  $("topAvatar").textContent = currentProfile.name.charAt(0).toUpperCase();
+  $("welcomeName").textContent = currentProfile.name;
+  $("profileName").value = currentProfile.name;
+  $("profileEmail").value = currentProfile.email;
+  $("profileAvatar").textContent = currentProfile.name.charAt(0).toUpperCase();
+
+  historyItems = JSON.parse(localStorage.getItem(storageKey()) || "[]");
+
+  renderAll();
+  navigate("dashboard");
+}
+
+function showAuth() {
+  appView.classList.add("hidden");
+  authView.classList.remove("hidden");
+  currentUser = null;
+}
+
+// REGISTER
+$("formRegister").addEventListener("submit", async e => {
+  e.preventDefault();
+
+  const name = $("registerName").value.trim();
+  const email = $("registerEmail").value.trim();
+  const pass = $("registerPassword").value;
+  const confirm = $("confirmPassword").value;
+
+  if (pass !== confirm) {
+    return authMessage("Konfirmasi password belum sama.");
+  }
+
+  if (pass.length < 8) {
+    return authMessage("Password akun minimal 8 karakter.");
+  }
+
+  if (!supabaseClient) {
+    return authMessage("Supabase belum terhubung. Periksa konfigurasi di script.js.");
+  }
+
+  try {
+    const { data, error } = await supabaseClient.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: { full_name: name }
+      }
+    });
+
+    if (error) throw error;
+
+    if (data.session) {
+      showApp(data.user, { name });
+      showToast("Akun berhasil dibuat.");
+    } else {
+      authMessage("Akun berhasil dibuat. Periksa email untuk verifikasi, lalu masuk.");
+    }
+  } catch (err) {
+    authMessage(err.message || "Pendaftaran gagal.");
+  }
+});
+
+// LOGIN
+$("formLogin").addEventListener("submit", async e => {
+  e.preventDefault();
+
+  if (!supabaseClient) {
+    return authMessage("Supabase belum terhubung. Periksa konfigurasi di script.js.");
+  }
+
+  try {
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: $("loginEmail").value.trim(),
+      password: $("loginPassword").value
+    });
+
+    if (error) throw error;
+
+    showApp(data.user);
+  } catch (err) {
+    authMessage(err.message || "Login gagal.");
+  }
+});
+
+// FORGOT PASSWORD
+$("forgotBtn").addEventListener("click", async () => {
+  const email = $("loginEmail").value.trim();
+
+  if (!email) {
+    return authMessage("Masukkan email terlebih dahulu.");
+  }
+
+  if (!supabaseClient) {
+    return authMessage("Supabase belum terhubung.");
+  }
+
+  try {
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: "https://puputnavilda.github.io/passwordguard/"
+    });
+
+    if (error) throw error;
+
+    authMessage("Tautan reset password berhasil dikirim. Periksa email kamu.");
+  } catch (err) {
+    authMessage(err.message || "Gagal mengirim tautan reset password.");
+  }
+});
+
+// UPDATE PASSWORD AFTER RECOVERY
+if (supabaseClient) {
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    if (event === "PASSWORD_RECOVERY") {
+      showToast("Tautan reset password berhasil dibuka.");
+      authMessage("Silakan lanjutkan proses penggantian password.");
+    }
+
+    if (session && !currentUser && event !== "PASSWORD_RECOVERY") {
+      showApp(session.user);
+    }
+  });
+}
+
+// LOGOUT
+$("logoutBtn").addEventListener("click", async () => {
+  if (supabaseClient) {
+    await supabaseClient.auth.signOut();
+  }
+
+  showAuth();
+  setAuthTab("login");
+});
+
+// CHECK SESSION
+if (supabaseClient) {
+  supabaseClient.auth.getSession().then(({ data }) => {
+    if (data.session) {
+      showApp(data.session.user);
+    }
+  });
+}
+
+// NAVIGATION
+function navigate(page) {
+  document.querySelectorAll(".page").forEach(p =>
+    p.classList.toggle("active", p.id === `page-${page}`)
+  );
+
+  document.querySelectorAll(".nav-link[data-page]").forEach(b =>
+    b.classList.toggle("active", b.dataset.page === page)
+  );
+
+  const active = document.querySelector(`.nav-link[data-page="${page}"]`);
+
+  $("crumb").textContent = active ? active.textContent.trim() : page;
+  $("sidebar").classList.remove("open");
+
+  if (page === "history") renderHistory();
+}
+
+document.querySelectorAll("[data-page]").forEach(b =>
+  b.addEventListener("click", () => navigate(b.dataset.page))
+);
+
+document.querySelectorAll("[data-go]").forEach(b =>
+  b.addEventListener("click", () => navigate(b.dataset.go))
+);
+
+$("mobileMenu").addEventListener("click", () =>
+  $("sidebar").classList.toggle("open")
+);
+
+// PASSWORD ANALYSIS
+function analyzePassword(value) {
+  const checks = {
+    length: value.length >= 12,
+    upper: /[A-Z]/.test(value),
+    lower: /[a-z]/.test(value),
+    number: /[0-9]/.test(value),
+    symbol: /[^A-Za-z0-9]/.test(value),
+    pattern:
+      !/(123456|12345|password|qwerty|abcdef|111111|000000)/i.test(value) &&
+      !/(.)\1{3,}/.test(value)
+  };
+
+  const weights = {
+    length: 25,
+    upper: 15,
+    lower: 15,
+    number: 15,
+    symbol: 15,
+    pattern: 15
+  };
+
+  let score = Object.keys(checks).reduce(
+    (sum, k) => sum + (checks[k] ? weights[k] : 0),
+    0
+  );
+
+  if (value.length === 0) score = 0;
+
+  const level = score >= 80 ? "Kuat" : score >= 50 ? "Sedang" : "Lemah";
+
+  const notes = [];
+
+  if (!checks.length) notes.push("Gunakan minimal 12 karakter.");
+  if (!checks.upper) notes.push("Tambahkan huruf kapital.");
+  if (!checks.lower) notes.push("Tambahkan huruf kecil.");
+  if (!checks.number) notes.push("Tambahkan angka.");
+  if (!checks.symbol) notes.push("Tambahkan simbol.");
+  if (!checks.pattern) notes.push("Hindari pola umum atau karakter berulang.");
+
+  return { checks, score, level, notes };
+}
+
+const checkKeys = ["length", "upper", "lower", "number", "symbol", "pattern"];
+
+// PASSWORD CHECKER
+$("checkInput").addEventListener("input", () => {
+  const v = $("checkInput").value;
+  const r = analyzePassword(v);
+
+  currentResult = v ? { ...r } : null;
+
+  checkKeys.forEach(k => {
+    const el = $(`c-${k}`);
+    el.classList.toggle("pass", !!r.checks[k]);
+    el.querySelector("i").textContent = r.checks[k] ? "✓" : "○";
+  });
+
+  $("checkLevel").textContent = v ? r.level : "Belum diperiksa";
+  $("checkScore").textContent = `${r.score}/100`;
+  $("checkMeter").style.width = r.score + "%";
+
+  $("checkMeter").style.background =
+    r.level === "Kuat"
+      ? "var(--green)"
+      : r.level === "Sedang"
+      ? "var(--yellow)"
+      : "var(--red)";
+
+  $("checkAdvice").textContent = !v
+    ? "Masukkan password untuk melihat hasil pemeriksaan dan rekomendasi."
+    : r.notes.length
+    ? r.notes.join(" ")
+    : "Semua kriteria dasar terpenuhi. Tetap gunakan password unik dan aktifkan 2FA.";
+
+  $("saveCheck").disabled = !v;
+});
+
+$("clearCheck").addEventListener("click", () => {
+  $("checkInput").value = "";
+  $("checkInput").dispatchEvent(new Event("input"));
+});
+
+$("saveCheck").addEventListener("click", () => {
+  if (!currentResult) return;
+
+  const item = {
+    date: new Date().toISOString(),
+    score: currentResult.score,
+    level: currentResult.level
+  };
+
+  historyItems.unshift(item);
+  historyItems = historyItems.slice(0, 200);
+
+  localStorage.setItem(storageKey(), JSON.stringify(historyItems));
+
+  renderAll();
+  showToast("Hasil pemeriksaan disimpan tanpa isi password.");
+});
+
+// PASSWORD ANALYZER
+$("analyzeInput").addEventListener("input", () => {
+  const v = $("analyzeInput").value;
+  const box = $("analysisResult");
+
+  if (!v) {
+    box.className = "analysis-placeholder";
+    box.textContent = "Hasil analisis akan tampil di sini.";
+    return;
+  }
+
+  const r = analyzePassword(v);
+
+  const counts = {
+    uppercase: (v.match(/[A-Z]/g) || []).length,
+    lowercase: (v.match(/[a-z]/g) || []).length,
+    numbers: (v.match(/[0-9]/g) || []).length,
+    symbols: (v.match(/[^A-Za-z0-9]/g) || []).length
+  };
+
+  const patterns =
+    /(123456|12345|password|qwerty|abcdef|111111|000000)/i.test(v) ||
+    /(.)\1{3,}/.test(v);
+
+  box.className = "";
+
+  box.innerHTML = `
+    <div class="analysis-grid">
+      <div class="analysis-cell">
+        <span>PANJANG</span>
+        <strong>${v.length}</strong>
+        <p>Jumlah karakter</p>
+      </div>
+      <div class="analysis-cell">
+        <span>VARIASI</span>
+        <strong>${Object.values(counts).filter(x => x > 0).length}/4</strong>
+        <p>Jenis karakter</p>
+      </div>
+      <div class="analysis-cell">
+        <span>SKOR</span>
+        <strong>${r.score}/100</strong>
+        <p>Kategori ${r.level}</p>
+      </div>
+      <div class="analysis-cell">
+        <span>HURUF BESAR</span>
+        <strong>${counts.uppercase}</strong>
+        <p>Karakter kapital</p>
+      </div>
+      <div class="analysis-cell">
+        <span>HURUF KECIL</span>
+        <strong>${counts.lowercase}</strong>
+        <p>Karakter kecil</p>
+      </div>
+      <div class="analysis-cell">
+        <span>ANGKA & SIMBOL</span>
+        <strong>${counts.numbers + counts.symbols}</strong>
+        <p>${counts.numbers} angka • ${counts.symbols} simbol</p>
+      </div>
+    </div>
+    <div class="advice-box">
+      ${
+        patterns
+          ? "Pola berulang atau pola umum terdeteksi. Hindari kombinasi yang mudah ditebak."
+          : "Tidak ditemukan pola umum sederhana yang diperiksa oleh sistem."
+      }
+      Analisis ini bersifat edukatif dan bukan pengujian terhadap database kebocoran password.
+    </div>
+  `;
+});
+
+// PASSWORD GENERATOR
+$("genLength").addEventListener("input", () => {
+  $("lengthValue").textContent = $("genLength").value + " karakter";
+});
+
+function secureRandomInt(max) {
+  const arr = new Uint32Array(1);
+  crypto.getRandomValues(arr);
+  return arr[0] % max;
+}
+
+function generatePassword() {
+  let groups = [];
+
+  if ($("genUpper").checked) groups.push("ABCDEFGHJKLMNPQRSTUVWXYZ");
+  if ($("genLower").checked) groups.push("abcdefghijkmnopqrstuvwxyz");
+  if ($("genNumber").checked) groups.push("23456789");
+  if ($("genSymbol").checked) groups.push("!@#$%^&*()-_=+[]{}?");
+
+  if (!groups.length) {
+    return showToast("Pilih minimal satu jenis karakter.");
+  }
+
+  const all = groups.join("");
+  const length = Number($("genLength").value);
+
+  let chars = groups.map(g => g[secureRandomInt(g.length)]);
+
+  while (chars.length < length) {
+    chars.push(all[secureRandomInt(all.length)]);
+  }
+
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = secureRandomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  const result = chars.join("");
+
+  $("generatedPassword").textContent = result;
+  $("generatedLength").textContent = result.length + " karakter";
+  $("generatedStrength").textContent = "Hasil dibuat • periksa kembali";
+}
+
+$("generateBtn").addEventListener("click", generatePassword);
+$("regenerateBtn").addEventListener("click", generatePassword);
+
+$("copyGenerated").addEventListener("click", async () => {
+  const v = $("generatedPassword").textContent;
+
+  if (!v || v.startsWith("Klik generate")) return;
+
+  try {
+    await navigator.clipboard.writeText(v);
+    showToast("Password berhasil disalin.");
+  } catch {
+    showToast("Clipboard tidak tersedia di browser ini.");
+  }
+});
+
+// HISTORY
+function saveHistory() {
+  localStorage.setItem(storageKey(), JSON.stringify(historyItems));
+}
+
+function renderAll() {
+  renderDashboard();
+  renderHistory();
+}
+
+function counts() {
+  return {
+    total: historyItems.length,
+    strong: historyItems.filter(x => x.level === "Kuat").length,
+    medium: historyItems.filter(x => x.level === "Sedang").length,
+    weak: historyItems.filter(x => x.level === "Lemah").length
+  };
+}
+
+function renderDashboard() {
+  const c = counts();
+
+  $("statTotal").textContent = c.total;
+  $("statStrong").textContent = c.strong;
+  $("statMedium").textContent = c.medium;
+  $("statWeak").textContent = c.weak;
+
+  $("donutTotal").textContent = c.total;
+  $("legendStrong").textContent = c.strong;
+  $("legendMedium").textContent = c.medium;
+  $("legendWeak").textContent = c.weak;
+
+  const deg = c.total ? (c.strong / c.total) * 360 : 0;
+  const deg2 = c.total ? ((c.strong + c.medium) / c.total) * 360 : 0;
+
+  $("donut").style.background =
+    `conic-gradient(var(--green) 0deg ${deg}deg, var(--yellow) ${deg}deg ${deg2}deg, var(--red) ${deg2}deg 360deg)`;
+
+  const recent = historyItems.slice(0, 7);
+
+  $("recentList").innerHTML = recent.length
+    ? recent.map(x => `
+      <div class="recent-item">
+        <div>
+          <strong>Password check</strong>
+          <small>${new Date(x.date).toLocaleString("id-ID", {
+            dateStyle: "medium",
+            timeStyle: "short"
+          })}</small>
+        </div>
+        <div>
+          <b style="font-size:11px;margin-right:9px">${x.score}/100</b>
+          <span class="badge ${x.level.toLowerCase()}">${x.level}</span>
+        </div>
+      </div>
+    `).join("")
+    : '<div class="empty-state">Belum ada aktivitas. Mulai periksa password contoh untuk melihat statistik.</div>';
+}
+
+function renderHistory() {
+  const c = counts();
+
+  $("histTotal").textContent = c.total;
+
+  $("histAverage").textContent = c.total
+    ? Math.round(historyItems.reduce((a, b) => a + b.score, 0) / c.total)
+    : 0;
+
+  $("histBest").textContent = c.total
+    ? Math.max(...historyItems.map(x => x.score))
+    : 0;
+
+  const filter = $("historyFilter").value;
+  const items = historyItems.filter(
+    x => filter === "all" || x.level === filter
+  );
+
+  $("historyBody").innerHTML = items.length
+    ? items.map(x => `
+      <tr>
+        <td>${new Date(x.date).toLocaleString("id-ID", {
+          dateStyle: "medium",
+          timeStyle: "short"
+        })}</td>
+        <td><b>${x.score}/100</b></td>
+        <td>${x.level}</td>
+        <td><span class="badge ${x.level.toLowerCase()}">${x.level}</span></td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="4" class="empty-state">Belum ada riwayat untuk kategori ini.</td></tr>';
+}
+
+$("historyFilter").addEventListener("change", renderHistory);
+
+$("clearHistory").addEventListener("click", () => {
+  if (!confirm("Hapus semua riwayat pemeriksaan?")) return;
+
+  historyItems = [];
+  saveHistory();
+  renderAll();
+  showToast("Riwayat berhasil dihapus.");
+});
+
+// PROFILE
+$("profileForm").addEventListener("submit", async e => {
+  e.preventDefault();
+
+  const name = $("profileName").value.trim();
+
+  if (!name) return;
+
+  if (supabaseClient && currentUser?.id) {
+    const { error } = await supabaseClient.auth.updateUser({
+      data: { full_name: name }
+    });
+
+    if (error) return showToast(error.message);
+  }
+
+  currentProfile.name = name;
+
+  $("topUser").textContent = name;
+  $("topAvatar").textContent = name.charAt(0).toUpperCase();
+  $("welcomeName").textContent = name;
+  $("profileAvatar").textContent = name.charAt(0).toUpperCase();
+
+  showToast("Profil diperbarui.");
+});
